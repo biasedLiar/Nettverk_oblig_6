@@ -26,9 +26,9 @@ const httpServer = net.createServer((connection) => {
       ws.onopen = () => ws.send('hello');
       function onSubmit(event) {
         event.preventDefault();
-        alert("submitted");
-        //ws.send(document.getElementById("element").value);
-        ws.send("Test123");
+        //alert(document.getElementById("message").value);
+        ws.send(document.getElementById("message").value);
+        //ws.send("Test123");
       }
     </script>
   </body>
@@ -41,9 +41,11 @@ httpServer.listen(3000, () => {
   console.log('HTTP server listening on port 3000');
 });
 
+let connections = [];
 // Incomplete WebSocket server
 const wsServer = net.createServer((connection) => {
   console.log('Client connected');
+  connections.push(connection);
 
   connection.on('data', (data) => {
     console.log('Data received from client: ', data.toString());
@@ -61,6 +63,30 @@ const wsServer = net.createServer((connection) => {
       }
       console.log("This is the key: " + encodedKey);
       connection.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: upgrade\r\nSec-WebSocket-Accept: ' + encodedKey + '\r\n\r\n');
+    }else{
+      let decodedData = [];
+      if(data.length < 126){
+        if((128 & data[1]) === 128){
+          let mask = data.slice(2, 6);
+          for (let index = 6; index < data.length; index++) {
+            const element = data[index];
+            decodedData[index - 6]= (element ^ mask[(index + 2) % 4]);
+          }
+        } else{
+          decodedData= data.slice(2, data.length);
+        }
+        console.log("We are in the loop");
+      } else{
+        console.log("Message is too long.");
+      }
+      console.log("The data is: " +  data[0] + ", " + data[1]);
+      console.log("Decoded data: " + String.fromCharCode(...decodedData));
+      let response = [data[0]];
+      response[1] =  decodedData.length;
+      response = response.concat(decodedData);
+      //connection.write(Buffer.from(response));
+      broadcast(Buffer.from(response));
+      
     }
   });
 
@@ -74,3 +100,13 @@ wsServer.on('error', (error) => {
 wsServer.listen(3001, () => {
   console.log('WebSocket server listening on port 3001');
 });
+
+function broadcast(data){
+  for (let index = 0; index < connections.length; index++) {
+    const connection = connections[index];
+    //console.log(connection);
+    connection.write(data);
+  }
+  
+  console.log(wsServer.getConnections((err, count) => console.log(count)));
+}
